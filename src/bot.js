@@ -417,12 +417,40 @@ async function checkReminders() {
 
 async function weatherText(city) {
   try {
-    const data = await getText(`https://wttr.in/${encodeURIComponent(city || "Moscow")}?format=j1`);
-    const current = JSON.parse(data).current_condition[0];
-    return `Погода: ${city}\n${current.temp_C}°C, ощущается как ${current.FeelsLikeC}°C\nВетер: ${current.windspeedKmph} км/ч\nВлажность: ${current.humidity}%`;
-  } catch {
+    const requestedCity = city || "Moscow";
+    const location = await getJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(requestedCity)}&count=1&language=ru&format=json`);
+    const place = location.results?.[0];
+    if (!place) return `Не удалось найти город «${requestedCity}». Проверьте его в настройках.`;
+
+    const params = new URLSearchParams({
+      latitude: String(place.latitude),
+      longitude: String(place.longitude),
+      current: "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m",
+      wind_speed_unit: "kmh",
+      timezone: "auto"
+    });
+    const forecast = await getJson(`https://api.open-meteo.com/v1/forecast?${params}`);
+    const current = forecast.current;
+    if (!current) throw new Error("Current weather is missing");
+
+    const area = [place.name, place.admin1, place.country].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(", ");
+    return `Погода: ${area}\n${weatherDescription(current.weather_code)}\n${Math.round(current.temperature_2m)}°C, ощущается как ${Math.round(current.apparent_temperature)}°C\nВетер: ${Math.round(current.wind_speed_10m)} км/ч\nВлажность: ${current.relative_humidity_2m}%`;
+  } catch (error) {
+    console.error(`Weather error: ${error.message}`);
     return "Не получилось получить погоду. Попробуйте позже или смените город в настройках.";
   }
+}
+
+function weatherDescription(code) {
+  if (code === 0) return "Ясно";
+  if ([1, 2].includes(code)) return "Переменная облачность";
+  if (code === 3) return "Пасмурно";
+  if ([45, 48].includes(code)) return "Туман";
+  if ([51, 53, 55, 56, 57].includes(code)) return "Морось";
+  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "Дождь";
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return "Снег";
+  if ([95, 96, 99].includes(code)) return "Гроза";
+  return "Погодные условия без описания";
 }
 
 async function currencyText() {
@@ -492,6 +520,15 @@ function getText(url) {
     req.setTimeout(10_000, () => req.destroy(new Error("Request timed out")));
     req.end();
   });
+}
+
+async function getJson(url) {
+  const body = await getText(url);
+  try {
+    return JSON.parse(body);
+  } catch (error) {
+    throw new Error(`Invalid JSON response: ${error.message}`);
+  }
 }
 
 function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }

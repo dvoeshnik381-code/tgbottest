@@ -23,8 +23,9 @@ fi
 
 echo "[2/5] Downloading the bot..."
 mkdir -p "${APP_DIR}/src" "${APP_DIR}/data"
-curl -fsSL "${RAW_URL}/src/bot.js" -o "${APP_DIR}/src/bot.js"
-curl -fsSL "${RAW_URL}/package.json" -o "${APP_DIR}/package.json"
+cache_buster="$(date +%s)"
+curl -fsSL "${RAW_URL}/src/bot.js?v=${cache_buster}" -o "${APP_DIR}/src/bot.js"
+curl -fsSL "${RAW_URL}/package.json?v=${cache_buster}" -o "${APP_DIR}/package.json"
 
 if [[ ! -s "${APP_DIR}/.env" ]]; then
   read -r -s -p "Paste the BotFather token and press Enter: " bot_token </dev/tty
