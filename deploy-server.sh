@@ -3,7 +3,8 @@
 set -Eeuo pipefail
 
 APP_DIR="/opt/tgbottest"
-RAW_URL="https://raw.githubusercontent.com/dvoeshnik381-code/tgbottest/main"
+BOT_REF="${BOT_REF:-main}"
+RAW_URL="https://raw.githubusercontent.com/dvoeshnik381-code/tgbottest/${BOT_REF}"
 SERVICE_FILE="/etc/systemd/system/tgbottest.service"
 
 if [[ "${EUID}" -ne 0 ]]; then
