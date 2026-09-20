@@ -422,34 +422,32 @@ async function weatherText(city) {
     const place = location.results?.[0];
     if (!place) return `Не удалось найти город «${requestedCity}». Проверьте его в настройках.`;
 
-    const params = new URLSearchParams({
-      latitude: String(place.latitude),
-      longitude: String(place.longitude),
-      current: "temperature_2m,relative_humidity_2m,apparent_temperature,weather_code,wind_speed_10m",
-      wind_speed_unit: "kmh",
-      timezone: "auto"
-    });
-    const forecast = await getJson(`https://api.open-meteo.com/v1/forecast?${params}`);
-    const current = forecast.current;
-    if (!current) throw new Error("Current weather is missing");
+    const params = new URLSearchParams({ lat: String(place.latitude), lon: String(place.longitude) });
+    const current = await getJson(`https://weather-api.madadipouya.com/v1/weather/current?${params}`);
+    if (current.errors?.length) throw new Error(current.errors.join(", "));
 
     const area = [place.name, place.admin1, place.country].filter(Boolean).filter((value, index, values) => values.indexOf(value) === index).join(", ");
-    return `Погода: ${area}\n${weatherDescription(current.weather_code)}\n${Math.round(current.temperature_2m)}°C, ощущается как ${Math.round(current.apparent_temperature)}°C\nВетер: ${Math.round(current.wind_speed_10m)} км/ч\nВлажность: ${current.relative_humidity_2m}%`;
+    return `Погода: ${area}\n${weatherDescription(current.weather?.[0]?.main)}\n${Math.round(current.temperature)}°C, ощущается как ${Math.round(current.feelsLike)}°C\nВетер: ${Math.round(current.wind?.speed || 0)} км/ч\nВлажность: ${current.main?.humidity ?? "—"}%`;
   } catch (error) {
     console.error(`Weather error: ${error.message}`);
     return "Не получилось получить погоду. Попробуйте позже или смените город в настройках.";
   }
 }
 
-function weatherDescription(code) {
-  if (code === 0) return "Ясно";
-  if ([1, 2].includes(code)) return "Переменная облачность";
-  if (code === 3) return "Пасмурно";
-  if ([45, 48].includes(code)) return "Туман";
-  if ([51, 53, 55, 56, 57].includes(code)) return "Морось";
-  if ([61, 63, 65, 66, 67, 80, 81, 82].includes(code)) return "Дождь";
-  if ([71, 73, 75, 77, 85, 86].includes(code)) return "Снег";
-  if ([95, 96, 99].includes(code)) return "Гроза";
+function weatherDescription(condition) {
+  const descriptions = {
+    Clear: "Ясно",
+    Clouds: "Облачно",
+    Rain: "Дождь",
+    Drizzle: "Морось",
+    Thunderstorm: "Гроза",
+    Snow: "Снег",
+    Mist: "Дымка",
+    Fog: "Туман",
+    Haze: "Мгла",
+    Smoke: "Дым"
+  };
+  if (descriptions[condition]) return descriptions[condition];
   return "Погодные условия без описания";
 }
 
@@ -514,7 +512,10 @@ function getText(url) {
       let body = "";
       res.setEncoding("utf8");
       res.on("data", (chunk) => { body += chunk; });
-      res.on("end", () => resolveRequest(body));
+      res.on("end", () => {
+        if ((res.statusCode || 500) >= 400) return rejectRequest(new Error(`HTTP ${res.statusCode} from ${new URL(url).hostname}`));
+        resolveRequest(body);
+      });
     });
     req.on("error", rejectRequest);
     req.setTimeout(10_000, () => req.destroy(new Error("Request timed out")));
