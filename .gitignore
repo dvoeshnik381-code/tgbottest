@@ -1,5 +1,6 @@
 .env
 data/
 node_modules/
+.ssh-deploy/
 npm-debug.log*
 .DS_Store

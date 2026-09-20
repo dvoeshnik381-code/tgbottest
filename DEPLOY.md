@@ -2,6 +2,23 @@
 
 GitHub хранит код, но не запускает Telegram-бота постоянно. Для режима 24/7 нужен хостинг, который будет держать Node.js процесс включенным.
 
+## Ubuntu-сервер
+
+Запустите от имени `root`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/dvoeshnik381-code/tgbottest/main/deploy-server.sh | bash
+```
+
+Установщик запросит токен BotFather скрытым вводом, установит Node.js и Git, затем создаст службу `tgbottest`. Повторный запуск команды обновляет код и сохраняет `.env` и каталог `data/`.
+
+Проверка состояния и просмотр логов:
+
+```bash
+systemctl status tgbottest --no-pager
+journalctl -u tgbottest -f
+```
+
 ## Что подготовлено
 
 - `.env` не попадет в GitHub.
