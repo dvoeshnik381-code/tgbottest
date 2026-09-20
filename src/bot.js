@@ -1,3 +1,4 @@
+import { randomInt as secureRandomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { request } from "node:https";
 import { cpus, freemem, hostname, loadavg, platform, release, totalmem, uptime } from "node:os";
@@ -17,6 +18,8 @@ if (!token || token.includes("replace_with_token")) {
 const apiBase = `https://api.telegram.org/bot${token}`;
 const dataPath = resolve(process.cwd(), "data", "bot-data.json");
 const sessions = new Map();
+const coinHistory = new Map();
+const diceHistory = new Map();
 let offset = 0;
 let db = loadDatabase();
 
@@ -112,10 +115,10 @@ async function handleMessage(message) {
       return send(chatId, helpText(), keyboards.main);
     case "🎲 Кубик":
     case "/roll":
-      return send(chatId, `🎲 Выпало: ${randomInt(1, 6)}`);
+      return send(chatId, `🎲 Выпало: ${fairRandom(chatId, [1, 2, 3, 4, 5, 6], diceHistory)}`);
     case "🪙 Монетка":
     case "/coin":
-      return send(chatId, Math.random() < 0.5 ? "Орел" : "Решка");
+      return send(chatId, fairRandom(chatId, ["Орел", "Решка"], coinHistory));
     case "📝 Заметки": return send(chatId, "Раздел заметок.", keyboards.notes);
     case "✅ Дела": return send(chatId, "Раздел дел.", keyboards.tasks);
     case "🛒 Покупки": return send(chatId, "Список покупок.", keyboards.shopping);
@@ -596,7 +599,14 @@ async function getJson(url) {
   }
 }
 
-function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+function fairRandom(chatId, values, history) {
+  const previous = history.get(chatId);
+  const candidates = previous?.streak >= 2 ? values.filter((value) => value !== previous.value) : values;
+  const value = candidates[secureRandomInt(candidates.length)];
+  history.set(chatId, { value, streak: previous?.value === value ? previous.streak + 1 : 1 });
+  return value;
+}
+
 function formatBytes(bytes) { return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`; }
 function formatDateTime(value, userTimeZone) {
   try { return new Date(value).toLocaleString("ru-RU", { timeZone: userTimeZone || timeZone }); }
