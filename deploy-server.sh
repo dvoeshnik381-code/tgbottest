@@ -3,7 +3,7 @@
 set -Eeuo pipefail
 
 APP_DIR="/opt/tgbottest"
-REPO_URL="https://github.com/dvoeshnik381-code/tgbottest.git"
+RAW_URL="https://raw.githubusercontent.com/dvoeshnik381-code/tgbottest/main"
 SERVICE_FILE="/etc/systemd/system/tgbottest.service"
 
 if [[ "${EUID}" -ne 0 ]]; then
@@ -13,7 +13,7 @@ fi
 
 echo "[1/5] Installing system packages..."
 apt-get update
-DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates git nodejs
+DEBIAN_FRONTEND=noninteractive apt-get install -y ca-certificates curl nodejs
 
 node_major="$(node --version | sed -E 's/^v([0-9]+).*/\1/')"
 if [[ -z "${node_major}" || "${node_major}" -lt 18 ]]; then
@@ -22,14 +22,9 @@ if [[ -z "${node_major}" || "${node_major}" -lt 18 ]]; then
 fi
 
 echo "[2/5] Downloading the bot..."
-if [[ -d "${APP_DIR}/.git" ]]; then
-  git -C "${APP_DIR}" pull --ff-only origin main
-else
-  mkdir -p "${APP_DIR}"
-  git clone "${REPO_URL}" "${APP_DIR}"
-fi
-
-mkdir -p "${APP_DIR}/data"
+mkdir -p "${APP_DIR}/src" "${APP_DIR}/data"
+curl -fsSL "${RAW_URL}/src/bot.js" -o "${APP_DIR}/src/bot.js"
+curl -fsSL "${RAW_URL}/package.json" -o "${APP_DIR}/package.json"
 
 if [[ ! -s "${APP_DIR}/.env" ]]; then
   read -r -s -p "Paste the BotFather token and press Enter: " bot_token </dev/tty
