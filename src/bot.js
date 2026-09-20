@@ -39,7 +39,7 @@ const keyboards = {
   diary: keyboard([["➕ Запись в дневник", "📖 Последние записи"], ["🧹 Очистить дневник"], ["⬅️ Главное меню"]]),
   habits: keyboard([["➕ Привычка", "✅ Отметить привычку"], ["📈 Статистика привычек"], ["⬅️ Главное меню"]]),
   links: keyboard([["➕ Ссылка", "🔎 Найти ссылку"], ["📋 Все ссылки"], ["🧹 Очистить ссылки"], ["⬅️ Главное меню"]]),
-  settings: keyboard([["🏙 Город для погоды"], ["⬅️ Главное меню"]])
+  settings: keyboard([["🏙 Город и часовой пояс"], ["⬅️ Главное меню"]])
 };
 
 console.log("Telegram bot is starting...");
@@ -102,6 +102,10 @@ async function handleMessage(message) {
     case "/start":
     case "⬅️ Главное меню":
       clearSession(chatId);
+      if (!user.timeZone) {
+        await send(chatId, welcome(message.from?.first_name), keyboards.main);
+        return ask(chatId, "city", "Чтобы правильно показывать погоду и время напоминаний, напишите ваш город.", keyboards.settings);
+      }
       return send(chatId, welcome(message.from?.first_name), keyboards.main);
     case "ℹ️ Помощь":
     case "/help":
@@ -120,8 +124,8 @@ async function handleMessage(message) {
     case "📔 Дневник": return send(chatId, "Личный дневник.", keyboards.diary);
     case "🔥 Привычки": return send(chatId, "Трекер привычек.", keyboards.habits);
     case "🔗 Ссылки": return send(chatId, "База ссылок.", keyboards.links);
-    case "⚙️ Настройки": return send(chatId, "Настройки бота.", keyboards.settings);
-    case "🌦 Погода": return send(chatId, await weatherText(user.city));
+    case "⚙️ Настройки": return send(chatId, settingsText(user), keyboards.settings);
+    case "🌦 Погода": return send(chatId, await weatherText(user));
     case "💱 Валюта": return send(chatId, await currencyText());
     case "💻 Мой ПК": return send(chatId, pcText());
     case "➕ Заметка": return ask(chatId, "note", "Напишите текст заметки.", keyboards.notes);
@@ -136,7 +140,7 @@ async function handleMessage(message) {
     case "✅ Куплено": return ask(chatId, "bought", "Напишите номер купленного товара.", keyboards.shopping);
     case "🧹 Очистить покупки": user.shopping = []; save(); return send(chatId, "Покупки очищены.", keyboards.shopping);
     case "➕ Напоминание": return startReminderTime(chatId);
-    case "📋 Напоминания": return send(chatId, listReminders(user.reminders), keyboards.reminders);
+    case "📋 Напоминания": return send(chatId, listReminders(user.reminders, user.timeZone), keyboards.reminders);
     case "⬅️ Напоминания":
       clearSession(chatId);
       return send(chatId, "Напоминания.", keyboards.reminders);
@@ -152,7 +156,7 @@ async function handleMessage(message) {
     case "📊 Статистика бюджета": return send(chatId, budgetText(user.budget), keyboards.budget);
     case "🧹 Очистить бюджет": user.budget = []; save(); return send(chatId, "Бюджет очищен.", keyboards.budget);
     case "➕ Запись в дневник": return ask(chatId, "diary", "Напишите запись в дневник.", keyboards.diary);
-    case "📖 Последние записи": return send(chatId, diaryText(user.diary), keyboards.diary);
+    case "📖 Последние записи": return send(chatId, diaryText(user.diary, user.timeZone), keyboards.diary);
     case "🧹 Очистить дневник": user.diary = []; save(); return send(chatId, "Дневник очищен.", keyboards.diary);
     case "➕ Привычка": return ask(chatId, "habit", "Напишите название привычки.", keyboards.habits);
     case "✅ Отметить привычку": return ask(chatId, "habitDone", habitPrompt(user.habits), keyboards.habits);
@@ -161,7 +165,9 @@ async function handleMessage(message) {
     case "🔎 Найти ссылку": return ask(chatId, "findLink", "Напишите слово для поиска.", keyboards.links);
     case "📋 Все ссылки": return send(chatId, linksText(user.links), keyboards.links);
     case "🧹 Очистить ссылки": user.links = []; save(); return send(chatId, "Ссылки очищены.", keyboards.links);
-    case "🏙 Город для погоды": return ask(chatId, "city", "Напишите город для погоды.", keyboards.settings);
+    case "🏙 Город для погоды":
+    case "🏙 Город и часовой пояс":
+      return ask(chatId, "city", "Напишите город, где вы находитесь.", keyboards.settings);
     default:
       if (text.startsWith("/calc")) return send(chatId, calculate(text.slice("/calc".length).trim()));
       return send(chatId, "Не понял. Выберите действие кнопкой снизу.", keyboards.main);
@@ -189,8 +195,28 @@ async function handleWaitingInput(chatId, text, user) {
     };
     user.reminders.push(reminder);
     save();
-    await send(chatId, `Напомню через ${formatMinutes(session.minutes)}: ${formatDateTime(reminder.at)}\n\nМожно добавить еще напоминание или вернуться в главное меню.`, keyboards.reminders);
+    await send(chatId, `Напомню через ${formatMinutes(session.minutes)}: ${formatDateTime(reminder.at, user.timeZone)}\n\nМожно добавить еще напоминание или вернуться в главное меню.`, keyboards.reminders);
     return true;
+  }
+
+  if (session.type === "city") {
+    try {
+      const place = await findCity(text);
+      if (!place) {
+        await send(chatId, `Не удалось найти город «${text}». Проверьте написание и попробуйте еще раз.`, keyboards.settings);
+        return true;
+      }
+      clearSession(chatId);
+      user.city = place.name;
+      user.timeZone = place.timezone || timeZone;
+      save();
+      await send(chatId, `Готово. Город: ${place.name}${place.country ? `, ${place.country}` : ""}\nЧасовой пояс: ${user.timeZone}\nМестное время: ${formatDateTime(new Date(), user.timeZone)}`, keyboards.settings);
+      return true;
+    } catch (error) {
+      console.error(`City settings error: ${error.message}`);
+      await send(chatId, "Не получилось проверить город. Попробуйте немного позже.", keyboards.settings);
+      return true;
+    }
   }
 
   clearSession(chatId);
@@ -201,7 +227,6 @@ async function handleWaitingInput(chatId, text, user) {
   if (session.type === "shopping") user.shopping.push(stamped(text));
   if (session.type === "diary") user.diary.push(stamped(text));
   if (session.type === "habit") user.habits.push({ name: text, dates: [] });
-  if (session.type === "city") user.city = text;
   if (session.type === "expense" || session.type === "income") {
     const item = parseMoney(text, session.type);
     if (!item) {
@@ -226,7 +251,7 @@ async function handleWaitingInput(chatId, text, user) {
       sent: false
     };
     user.reminders.push(reminder);
-    answer = `Напомню через ${formatMinutes(minutes)}: ${formatDateTime(reminder.at)}`;
+    answer = `Напомню через ${formatMinutes(minutes)}: ${formatDateTime(reminder.at, user.timeZone)}`;
   }
   if (session.type === "reminder") {
     const reminder = parseReminder(text);
@@ -235,7 +260,7 @@ async function handleWaitingInput(chatId, text, user) {
       return true;
     }
     user.reminders.push(reminder);
-    answer = `Напомню: ${formatDateTime(reminder.at)}`;
+    answer = `Напомню: ${formatDateTime(reminder.at, user.timeZone)}`;
   }
   if (session.type === "doneTask") markByNumber(user.tasks, text, "done");
   if (session.type === "bought") removeByNumber(user.shopping, text);
@@ -274,8 +299,9 @@ function addReminderMinutes(chatId, minutesToAdd) {
 function clearSession(chatId) { sessions.delete(chatId); }
 
 function userData(chatId) {
-  db.users[chatId] ||= { city: "Moscow", notes: [], tasks: [], shopping: [], reminders: [], budget: [], diary: [], habits: [], links: [] };
-  return db.users[chatId];
+  const user = db.users[chatId] ||= { city: "Moscow", timeZone: null, notes: [], tasks: [], shopping: [], reminders: [], budget: [], diary: [], habits: [], links: [] };
+  if (!("timeZone" in user)) user.timeZone = null;
+  return user;
 }
 
 function loadDatabase() {
@@ -336,9 +362,9 @@ function budgetText(items) {
   return `Доходы: ${income}\nРасходы: ${expense}\nБаланс: ${income - expense}\n\nПоследние записи:\n${last}`;
 }
 
-function diaryText(items) {
+function diaryText(items, userTimeZone) {
   if (!items.length) return "Записей пока нет.";
-  return items.slice(-5).map((item) => `${formatDateTime(item.createdAt)}\n${item.text}`).join("\n\n");
+  return items.slice(-5).map((item) => `${formatDateTime(item.createdAt, userTimeZone)}\n${item.text}`).join("\n\n");
 }
 
 function habitPrompt(habits) {
@@ -395,10 +421,10 @@ function formatMinutes(minutes) {
   return rest ? `${hours} ч ${rest} мин` : `${hours} ч`;
 }
 
-function listReminders(items) {
+function listReminders(items, userTimeZone) {
   const active = items.filter((item) => !item.sent);
   if (!active.length) return "Активных напоминаний нет.";
-  return active.map((item, index) => `${index + 1}. ${formatDateTime(item.at)} - ${item.text}`).join("\n");
+  return active.map((item, index) => `${index + 1}. ${formatDateTime(item.at, userTimeZone)} - ${item.text}`).join("\n");
 }
 
 async function checkReminders() {
@@ -416,12 +442,16 @@ async function checkReminders() {
   if (changed) save();
 }
 
-async function weatherText(city) {
+async function weatherText(user) {
   try {
-    const requestedCity = city || "Moscow";
-    const location = await getJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(requestedCity)}&count=1&language=ru&format=json`);
-    const place = location.results?.[0];
+    const requestedCity = user.city || "Moscow";
+    const place = await findCity(requestedCity);
     if (!place) return `Не удалось найти город «${requestedCity}». Проверьте его в настройках.`;
+
+    if (place.timezone && user.timeZone !== place.timezone) {
+      user.timeZone = place.timezone;
+      save();
+    }
 
     const params = new URLSearchParams({ lat: String(place.latitude), lon: String(place.longitude) });
     const current = await getJson(`https://weather-api.madadipouya.com/v1/weather/current?${params}`);
@@ -433,6 +463,17 @@ async function weatherText(city) {
     console.error(`Weather error: ${error.message}`);
     return "Не получилось получить погоду. Попробуйте позже или смените город в настройках.";
   }
+}
+
+async function findCity(city) {
+  const location = await getJson(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(city)}&count=1&language=ru&format=json`);
+  return location.results?.[0] || null;
+}
+
+function settingsText(user) {
+  const zone = user.timeZone || "не настроен";
+  const localTime = user.timeZone ? formatDateTime(new Date(), user.timeZone) : "укажите город";
+  return `Настройки бота.\nГород: ${user.city || "не указан"}\nЧасовой пояс: ${zone}\nМестное время: ${localTime}`;
 }
 
 function weatherDescription(condition) {
@@ -557,7 +598,10 @@ async function getJson(url) {
 
 function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function formatBytes(bytes) { return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`; }
-function formatDateTime(value) { return new Date(value).toLocaleString("ru-RU", { timeZone }); }
+function formatDateTime(value, userTimeZone) {
+  try { return new Date(value).toLocaleString("ru-RU", { timeZone: userTimeZone || timeZone }); }
+  catch { return new Date(value).toLocaleString("ru-RU", { timeZone }); }
+}
 function sleep(ms) { return new Promise((resolveSleep) => setTimeout(resolveSleep, ms)); }
 
 
