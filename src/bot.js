@@ -7,6 +7,7 @@ loadEnvFile();
 
 const token = process.env.BOT_TOKEN;
 const pollTimeoutSeconds = Number(process.env.POLL_TIMEOUT_SECONDS || 30);
+const timeZone = process.env.TIME_ZONE || "Europe/Moscow";
 
 if (!token || token.includes("replace_with_token")) {
   console.error("BOT_TOKEN is missing. Copy .env.example to .env and add your BotFather token.");
@@ -188,7 +189,7 @@ async function handleWaitingInput(chatId, text, user) {
     };
     user.reminders.push(reminder);
     save();
-    await send(chatId, `Напомню через ${formatMinutes(session.minutes)}: ${new Date(reminder.at).toLocaleString("ru-RU")}\n\nМожно добавить еще напоминание или вернуться в главное меню.`, keyboards.reminders);
+    await send(chatId, `Напомню через ${formatMinutes(session.minutes)}: ${formatDateTime(reminder.at)}\n\nМожно добавить еще напоминание или вернуться в главное меню.`, keyboards.reminders);
     return true;
   }
 
@@ -225,7 +226,7 @@ async function handleWaitingInput(chatId, text, user) {
       sent: false
     };
     user.reminders.push(reminder);
-    answer = `Напомню через ${formatMinutes(minutes)}: ${new Date(reminder.at).toLocaleString("ru-RU")}`;
+    answer = `Напомню через ${formatMinutes(minutes)}: ${formatDateTime(reminder.at)}`;
   }
   if (session.type === "reminder") {
     const reminder = parseReminder(text);
@@ -234,7 +235,7 @@ async function handleWaitingInput(chatId, text, user) {
       return true;
     }
     user.reminders.push(reminder);
-    answer = `Напомню: ${new Date(reminder.at).toLocaleString("ru-RU")}`;
+    answer = `Напомню: ${formatDateTime(reminder.at)}`;
   }
   if (session.type === "doneTask") markByNumber(user.tasks, text, "done");
   if (session.type === "bought") removeByNumber(user.shopping, text);
@@ -337,7 +338,7 @@ function budgetText(items) {
 
 function diaryText(items) {
   if (!items.length) return "Записей пока нет.";
-  return items.slice(-5).map((item) => `${new Date(item.createdAt).toLocaleString("ru-RU")}\n${item.text}`).join("\n\n");
+  return items.slice(-5).map((item) => `${formatDateTime(item.createdAt)}\n${item.text}`).join("\n\n");
 }
 
 function habitPrompt(habits) {
@@ -397,7 +398,7 @@ function formatMinutes(minutes) {
 function listReminders(items) {
   const active = items.filter((item) => !item.sent);
   if (!active.length) return "Активных напоминаний нет.";
-  return active.map((item, index) => `${index + 1}. ${new Date(item.at).toLocaleString("ru-RU")} - ${item.text}`).join("\n");
+  return active.map((item, index) => `${index + 1}. ${formatDateTime(item.at)} - ${item.text}`).join("\n");
 }
 
 async function checkReminders() {
@@ -556,6 +557,7 @@ async function getJson(url) {
 
 function randomInt(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
 function formatBytes(bytes) { return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`; }
+function formatDateTime(value) { return new Date(value).toLocaleString("ru-RU", { timeZone }); }
 function sleep(ms) { return new Promise((resolveSleep) => setTimeout(resolveSleep, ms)); }
 
 
