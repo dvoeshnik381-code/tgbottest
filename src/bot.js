@@ -453,12 +453,13 @@ function weatherDescription(condition) {
 
 async function currencyText() {
   try {
-    const data = await getJson("https://www.cbr-xml-daily.ru/daily_json.js");
-    const usd = data.Valute?.USD?.Value;
-    const eur = data.Valute?.EUR?.Value;
+    const data = await getJson("https://open.er-api.com/v6/latest/RUB");
+    if (data.result !== "success") throw new Error(data["error-type"] || "Currency API error");
+    const usd = 1 / data.rates?.USD;
+    const eur = 1 / data.rates?.EUR;
     if (!Number.isFinite(usd) || !Number.isFinite(eur)) throw new Error("USD or EUR rate is missing");
-    const updated = data.Date ? new Date(data.Date).toLocaleDateString("ru-RU") : "сегодня";
-    return `Курс ЦБ РФ на ${updated}:\nUSD: ${formatRate(usd)} ₽\nEUR: ${formatRate(eur)} ₽`;
+    const updated = data.time_last_update_unix ? new Date(data.time_last_update_unix * 1000).toLocaleDateString("ru-RU") : "сегодня";
+    return `Курс валют на ${updated}:\nUSD: ${formatRate(usd)} ₽\nEUR: ${formatRate(eur)} ₽`;
   } catch (error) {
     console.error(`Currency error: ${error.message}`);
     return "Не получилось получить курсы валют.";
@@ -519,7 +520,7 @@ function getText(url) {
     const options = { method: "GET", headers: { "user-agent": "telegram-local-bot" } };
     const forcedIpv6 = {
       "weather-api.madadipouya.com": ["2606:4700:3032::6815:152", "2606:4700:3036::ac43:80e8"],
-      "www.cbr-xml-daily.ru": ["2a03:6f00:4::5c35:69b6"]
+      "open.er-api.com": ["2a06:98c1:3123:8000::", "2a06:98c1:3122:8000::"]
     };
     if (forcedIpv6[target.hostname]) {
       const addresses = forcedIpv6[target.hostname];
