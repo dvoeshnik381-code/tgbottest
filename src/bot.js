@@ -453,13 +453,20 @@ function weatherDescription(condition) {
 
 async function currencyText() {
   try {
-    const xml = await getText("https://www.cbr.ru/scripts/XML_daily.asp");
-    const usd = xml.match(/<CharCode>USD<\/CharCode>[\s\S]*?<Value>([^<]+)/)?.[1];
-    const eur = xml.match(/<CharCode>EUR<\/CharCode>[\s\S]*?<Value>([^<]+)/)?.[1];
-    return `Курс ЦБ РФ:\nUSD: ${usd} ₽\nEUR: ${eur} ₽`;
-  } catch {
+    const data = await getJson("https://www.cbr-xml-daily.ru/daily_json.js");
+    const usd = data.Valute?.USD?.Value;
+    const eur = data.Valute?.EUR?.Value;
+    if (!Number.isFinite(usd) || !Number.isFinite(eur)) throw new Error("USD or EUR rate is missing");
+    const updated = data.Date ? new Date(data.Date).toLocaleDateString("ru-RU") : "сегодня";
+    return `Курс ЦБ РФ на ${updated}:\nUSD: ${formatRate(usd)} ₽\nEUR: ${formatRate(eur)} ₽`;
+  } catch (error) {
+    console.error(`Currency error: ${error.message}`);
     return "Не получилось получить курсы валют.";
   }
+}
+
+function formatRate(value) {
+  return Number(value).toLocaleString("ru-RU", { minimumFractionDigits: 2, maximumFractionDigits: 4 });
 }
 
 function pcText() {
@@ -510,8 +517,12 @@ function getText(url) {
   return new Promise((resolveRequest, rejectRequest) => {
     const target = new URL(url);
     const options = { method: "GET", headers: { "user-agent": "telegram-local-bot" } };
-    if (target.hostname === "weather-api.madadipouya.com") {
-      const addresses = ["2606:4700:3032::6815:152", "2606:4700:3036::ac43:80e8"];
+    const forcedIpv6 = {
+      "weather-api.madadipouya.com": ["2606:4700:3032::6815:152", "2606:4700:3036::ac43:80e8"],
+      "www.cbr-xml-daily.ru": ["2a03:6f00:4::5c35:69b6"]
+    };
+    if (forcedIpv6[target.hostname]) {
+      const addresses = forcedIpv6[target.hostname];
       options.lookup = (_hostname, lookupOptions, callback) => {
         const results = addresses.map((address) => ({ address, family: 6 }));
         if (lookupOptions?.all) callback(null, results);
