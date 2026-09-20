@@ -508,7 +508,17 @@ function postJson(url, payload) {
 
 function getText(url) {
   return new Promise((resolveRequest, rejectRequest) => {
-    const req = request(url, { method: "GET", headers: { "user-agent": "telegram-local-bot" } }, (res) => {
+    const target = new URL(url);
+    const options = { method: "GET", headers: { "user-agent": "telegram-local-bot" } };
+    if (target.hostname === "weather-api.madadipouya.com") {
+      const addresses = ["2606:4700:3032::6815:152", "2606:4700:3036::ac43:80e8"];
+      options.lookup = (_hostname, lookupOptions, callback) => {
+        const results = addresses.map((address) => ({ address, family: 6 }));
+        if (lookupOptions?.all) callback(null, results);
+        else callback(null, results[0].address, results[0].family);
+      };
+    }
+    const req = request(target, options, (res) => {
       let body = "";
       res.setEncoding("utf8");
       res.on("data", (chunk) => { body += chunk; });
