@@ -3,6 +3,9 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { request } from "node:https";
 import { cpus, freemem, hostname, loadavg, platform, release, totalmem, uptime } from "node:os";
 import { dirname, resolve } from "node:path";
+import { createPcControl } from "./pc-control.js";
+import { createAssistant } from "./assistant.js";
+import { createAliceServer } from "./alice.js";
 
 loadEnvFile();
 
@@ -31,6 +34,7 @@ const keyboards = {
     ["📊 Бюджет", "📔 Дневник"],
     ["🔥 Привычки", "🔗 Ссылки"],
     ["💻 Мой ПК", "🎲 Кубик", "🪙 Монетка"],
+    ["🧠 ИИ-помощник", "🧾 Память ИИ"],
     ["⚙️ Настройки", "ℹ️ Помощь"]
   ]),
   notes: keyboard([["➕ Заметка", "📋 Заметки"], ["🧹 Очистить заметки"], ["⬅️ Главное меню"]]),
@@ -44,6 +48,17 @@ const keyboards = {
   links: keyboard([["➕ Ссылка", "🔎 Найти ссылку"], ["📋 Все ссылки"], ["🧹 Очистить ссылки"], ["⬅️ Главное меню"]]),
   settings: keyboard([["🏙 Город и часовой пояс"], ["⬅️ Главное меню"]])
 };
+
+const pc = createPcControl({ enabled: process.env.PC_CONTROL_ENABLED === "true", dryRun: process.env.PC_DRY_RUN !== "false" });
+const assistant = createAssistant({ ownerChatId: process.env.OWNER_CHAT_ID, userData, save, send, clearSession, pc,
+  apiKey: process.env.OPENAI_API_KEY, model: process.env.OPENAI_MODEL || "gpt-6-luna",
+  isNavigation: text => ["/start", "/help"].includes(text) || Object.values(keyboards).some(kb => kb.keyboard.flat().some(button => button.text === text)) });
+if (process.env.ALICE_ENABLED === "true") {
+  const alice = createAliceServer({ token: process.env.ALICE_WEBHOOK_TOKEN, userId: process.env.ALICE_USER_ID,
+    applicationId: process.env.ALICE_APPLICATION_ID, pairing: process.env.ALICE_PAIRING_MODE === "true", assistant });
+  alice.on("error", () => { console.error("Alice HTTP server failed. Check ALICE_PORT and configuration."); process.exit(1); });
+  alice.listen(Number(process.env.ALICE_PORT || 8080), "127.0.0.1", () => console.log("Alice webhook listening on localhost."));
+}
 
 console.log("Telegram bot is starting...");
 await verifyBot();
@@ -96,9 +111,10 @@ async function handleMessage(message) {
   const chatId = String(message.chat.id);
   const text = (message.text || "").trim();
   const user = userData(chatId);
-  console.log(`Message from chat ${chatId}: ${text || "[non-text]"}`);
+  console.log(`Message from chat ${chatId}: ${text ? "[text]" : "[non-text]"}`);
 
   if (!text) return send(chatId, "Я пока понимаю только текстовые сообщения.");
+  if (await assistant.handleTelegram(message)) return;
   if (await handleWaitingInput(chatId, text, user)) return;
 
   switch (text) {
@@ -326,7 +342,7 @@ function welcome(name = "") {
 }
 
 function helpText() {
-  return "Выберите раздел кнопками снизу. Внутри разделов бот сам спросит нужный текст: задачу, покупку, сумму, город или напоминание.";
+  return "Выберите раздел кнопками снизу. Внутри разделов бот сам спросит нужный текст: задачу, покупку, сумму, город или напоминание.\n\nИИ: /ask вопрос, /memory, /remember сведения, /forget_memory.\nПК: /shutdown, /confirm_shutdown, /cancel_shutdown, /pc_status. ИИ и управление ПК доступны только владельцу.";
 }
 
 function stamped(text) { return { text, createdAt: nowIso() }; }
